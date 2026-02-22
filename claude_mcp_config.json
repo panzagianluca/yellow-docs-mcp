@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "yellow-docs": {
+      "command": "uv",
+      "args": ["run", "--directory", "/Users/panza/Documents/Yellow MPC", "python", "-m", "yellow_docs_mcp"]
+    }
+  }
+}
