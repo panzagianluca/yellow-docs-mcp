@@ -106,7 +106,7 @@ def test_full_pipeline(sample_docs, tmp_path):
     pages = parse_docs_directory(sample_docs)
     assert len(pages) == 3
 
-    engine = SearchEngine()
+    engine = SearchEngine(enable_vectors=False)
     engine.build_index(pages)
     assert engine.is_ready()
 
@@ -121,6 +121,9 @@ def test_full_pipeline(sample_docs, tmp_path):
     results = engine.search("channel", category="protocol")
     assert all(r.category == "protocol" for r in results)
 
+    results = engine.search("channel", source="docs")
+    assert all(r.source == "docs" for r in results)
+
     page = engine.get_page_by_path("protocol/off-chain/channel-methods.mdx")
     assert page is not None
     assert page.title == "Channel Management Methods"
@@ -133,12 +136,12 @@ def test_index_persistence(sample_docs, tmp_path):
     """Test: save index -> load index -> search still works."""
     pages = parse_docs_directory(sample_docs)
 
-    engine1 = SearchEngine()
+    engine1 = SearchEngine(enable_vectors=False)
     engine1.build_index(pages)
     index_path = tmp_path / "test_index.json"
     save_index(engine1.get_index_data(), index_path)
 
-    engine2 = SearchEngine()
+    engine2 = SearchEngine(enable_vectors=False)
     data = load_index(index_path)
     assert data is not None
     engine2.load_index_data(data)
@@ -146,3 +149,14 @@ def test_index_persistence(sample_docs, tmp_path):
     results = engine2.search("create_channel")
     assert len(results) > 0
     assert results[0].path == "protocol/off-chain/channel-methods.mdx"
+
+
+def test_incremental_index_reuse(sample_docs):
+    pages = parse_docs_directory(sample_docs)
+    engine1 = SearchEngine(enable_vectors=False)
+    engine1.build_index(pages)
+
+    engine2 = SearchEngine(enable_vectors=False)
+    engine2.build_index(pages, previous_index=engine1.get_index_data())
+    results = engine2.search("state channels")
+    assert len(results) > 0

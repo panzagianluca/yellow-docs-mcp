@@ -46,3 +46,8 @@ yellow-docs-mcp = "yellow_docs_mcp.server:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+markers = [
+    "live: runs tests that require internet access and live upstream repositories",
+]

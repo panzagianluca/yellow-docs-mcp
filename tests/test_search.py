@@ -1,6 +1,5 @@
 """Tests for hybrid search engine."""
-import pytest
-from yellow_docs_mcp.parser import DocPage, DocSection, CodeBlock
+from yellow_docs_mcp.parser import CodeBlock, DocPage, DocSection
 from yellow_docs_mcp.search import SearchEngine, SearchResult
 
 
@@ -39,19 +38,19 @@ def _make_pages() -> list[DocPage]:
                 DocSection(title="NitroliteRPC", level=2,
                     text="The main RPC client class for interacting with ClearNode WebSocket endpoints.",
                     code_blocks=[CodeBlock(language="typescript", code="class NitroliteRPC { connect(url: string): void }")]),
-            ], raw_content="",
+            ], raw_content="", source="nitro",
         ),
     ]
 
 
 def test_search_engine_build():
-    engine = SearchEngine()
+    engine = SearchEngine(enable_vectors=False)
     engine.build_index(_make_pages())
     assert engine.is_ready()
 
 
 def test_search_returns_results():
-    engine = SearchEngine()
+    engine = SearchEngine(enable_vectors=False)
     engine.build_index(_make_pages())
     results = engine.search("state channels scaling")
     assert len(results) > 0
@@ -59,14 +58,14 @@ def test_search_returns_results():
 
 
 def test_search_relevance():
-    engine = SearchEngine()
+    engine = SearchEngine(enable_vectors=False)
     engine.build_index(_make_pages())
     results = engine.search("create_channel")
     assert results[0].path == "protocol/off-chain/channel-methods.mdx"
 
 
 def test_search_category_filter():
-    engine = SearchEngine()
+    engine = SearchEngine(enable_vectors=False)
     engine.build_index(_make_pages())
     results = engine.search("channel", category="protocol")
     for r in results:
@@ -74,14 +73,14 @@ def test_search_category_filter():
 
 
 def test_search_limit():
-    engine = SearchEngine()
+    engine = SearchEngine(enable_vectors=False)
     engine.build_index(_make_pages())
     results = engine.search("channel", limit=1)
     assert len(results) <= 1
 
 
 def test_search_result_has_content():
-    engine = SearchEngine()
+    engine = SearchEngine(enable_vectors=False)
     engine.build_index(_make_pages())
     results = engine.search("fragmentation")
     assert len(results) > 0
@@ -95,3 +94,49 @@ def test_search_bm25_only_mode():
     results = engine.search("create_channel")
     assert len(results) > 0
     assert results[0].path == "protocol/off-chain/channel-methods.mdx"
+
+
+def test_search_source_filter():
+    engine = SearchEngine(enable_vectors=False)
+    engine.build_index(_make_pages())
+    results = engine.search("nitrolite", source="nitro")
+    assert len(results) > 0
+    assert all(r.source == "nitro" for r in results)
+
+
+def test_search_vector_failure_falls_back(monkeypatch):
+    engine = SearchEngine(enable_vectors=True)
+    monkeypatch.setattr(engine, "_load_model", lambda: False)
+    engine.build_index(_make_pages())
+    results = engine.search("create_channel")
+    assert len(results) > 0
+    assert results[0].path == "protocol/off-chain/channel-methods.mdx"
+
+
+def test_search_chunk_splitting(monkeypatch):
+    monkeypatch.setenv("YELLOW_DOCS_MAX_CHUNK_CHARS", "80")
+    monkeypatch.setenv("YELLOW_DOCS_CHUNK_OVERLAP_CHARS", "20")
+    engine = SearchEngine(enable_vectors=False)
+
+    pages = [
+        DocPage(
+            path="learn/long.md",
+            category="learn",
+            title="Long Page",
+            description="",
+            keywords=[],
+            sections=[
+                DocSection(
+                    title="Long Section",
+                    level=2,
+                    text=" ".join(["state-channel"] * 200),
+                    code_blocks=[],
+                )
+            ],
+            raw_content="",
+        )
+    ]
+
+    engine.build_index(pages)
+    assert engine.is_ready()
+    assert len(engine._chunks) > 1

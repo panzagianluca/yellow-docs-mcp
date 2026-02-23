@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    name: Unit and integration tests
+    runs-on: ubuntu-latest
+    env:
+      YELLOW_DOCS_DISABLE_VECTORS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests
+        run: uv run pytest -q -m "not live"
+
+  smoke-live-docs:
+    name: Live docs smoke test
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      YELLOW_DOCS_DISABLE_VECTORS: "1"
+      YELLOW_DOCS_LIVE_TESTS: "1"
+      YELLOW_DOCS_REPOS: "docs=https://github.com/layer-3/docs"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --extra dev
+
+      - name: Run live smoke test
+        run: uv run pytest -q tests/test_live_smoke.py

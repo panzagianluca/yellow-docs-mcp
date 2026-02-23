@@ -1,6 +1,7 @@
 """Parse MDX/MD documents into structured sections."""
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +33,24 @@ class DocPage:
     keywords: list[str]
     sections: list[DocSection]
     raw_content: str
+    source: str = "docs"
+
+
+DEFAULT_EXCLUDE_DIRS = {
+    ".git",
+    ".github",
+    ".next",
+    ".venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    "__pycache__",
+    "node_modules",
+    "dist",
+    "build",
+    "target",
+    "coverage",
+    ".cache",
+}
 
 
 def _extract_frontmatter(content: str) -> tuple[dict, str]:
@@ -109,9 +128,10 @@ def _extract_admonition_text(text: str) -> str:
     return "\n".join(result)
 
 
-def _split_sections(content: str) -> list[DocSection]:
+def _split_sections(content: str, max_heading_level: int = 3) -> list[DocSection]:
     """Split content into sections by headings."""
-    heading_pattern = r'^(#{1,3})\s+(.+)$'
+    max_heading_level = min(max(max_heading_level, 1), 6)
+    heading_pattern = rf'^(#{{1,{max_heading_level}}})\s+(.+)$'
     lines = content.split("\n")
     sections: list[DocSection] = []
     current_title = ""
@@ -160,7 +180,12 @@ def _title_from_content(content: str) -> str:
     return match.group(1).strip() if match else "Untitled"
 
 
-def parse_document(content: str, path: str) -> DocPage:
+def parse_document(
+    content: str,
+    path: str,
+    source: str = "docs",
+    max_heading_level: int = 3,
+) -> DocPage:
     """Parse a MDX/MD document into structured sections."""
     frontmatter, body = _extract_frontmatter(content)
     body = _strip_imports(body)
@@ -172,20 +197,51 @@ def parse_document(content: str, path: str) -> DocPage:
     if isinstance(keywords, str):
         keywords = [k.strip() for k in keywords.split(",")]
     category = path.split("/")[0] if "/" in path else ""
-    sections = _split_sections(body)
+    sections = _split_sections(body, max_heading_level=max_heading_level)
     return DocPage(
         path=path, category=category, title=title, description=description,
-        keywords=keywords, sections=sections, raw_content=content,
+        keywords=keywords, sections=sections, raw_content=content, source=source,
     )
 
 
-def parse_docs_directory(docs_dir: Path) -> list[DocPage]:
+def _iter_doc_files(
+    docs_dir: Path,
+    exclude_dirs: set[str] | None = None,
+) -> list[Path]:
+    exclude_dirs = set(exclude_dirs or DEFAULT_EXCLUDE_DIRS)
+    results: list[Path] = []
+    for root, dirs, files in os.walk(docs_dir):
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        root_path = Path(root)
+        for filename in files:
+            if not filename.endswith((".md", ".mdx")):
+                continue
+            results.append(root_path / filename)
+    return sorted(results)
+
+
+def parse_docs_directory(
+    docs_dir: Path,
+    source: str = "docs",
+    path_prefix: str = "",
+    max_heading_level: int = 3,
+    exclude_dirs: set[str] | None = None,
+    max_file_bytes: int = 2_000_000,
+) -> list[DocPage]:
     """Parse all MDX/MD files in a docs directory."""
     pages = []
-    for ext in ("*.md", "*.mdx"):
-        for filepath in docs_dir.rglob(ext):
-            rel_path = str(filepath.relative_to(docs_dir))
-            content = filepath.read_text(encoding="utf-8")
-            page = parse_document(content, rel_path)
-            pages.append(page)
+    for filepath in _iter_doc_files(docs_dir, exclude_dirs=exclude_dirs):
+        if filepath.stat().st_size > max_file_bytes:
+            continue
+        rel_path = str(filepath.relative_to(docs_dir)).replace("\\", "/")
+        if path_prefix:
+            rel_path = f"{path_prefix.strip('/')}/{rel_path}"
+        content = filepath.read_text(encoding="utf-8")
+        page = parse_document(
+            content,
+            rel_path,
+            source=source,
+            max_heading_level=max_heading_level,
+        )
+        pages.append(page)
     return pages

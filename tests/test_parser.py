@@ -1,6 +1,6 @@
 """Tests for MDX/MD document parser."""
 import pytest
-from yellow_docs_mcp.parser import parse_document, DocPage, DocSection
+from yellow_docs_mcp.parser import parse_document, parse_docs_directory
 
 
 SAMPLE_MDX = """---
@@ -58,6 +58,7 @@ def test_parse_frontmatter():
     assert "state channels" in page.keywords
     assert page.path == "learn/introduction/what-yellow-solves.mdx"
     assert page.category == "learn"
+    assert page.source == "docs"
 
 
 def test_parse_no_frontmatter():
@@ -100,3 +101,27 @@ def test_preserve_admonitions():
     page = parse_document(SAMPLE_MDX, "learn/introduction/what-yellow-solves.mdx")
     frag_section = [s for s in page.sections if s.title == "The Fragmentation Problem"][0]
     assert "State channels solve this" in frag_section.text
+
+
+def test_parse_docs_directory_with_source_and_prefix(tmp_path):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "guide.md").write_text("# Guide\n\n## Step\nRun it")
+
+    pages = parse_docs_directory(docs_dir, source="nitro", path_prefix="manuals")
+    assert len(pages) == 1
+    assert pages[0].source == "nitro"
+    assert pages[0].path == "manuals/guide.md"
+
+
+def test_parse_docs_directory_excludes_node_modules(tmp_path):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    node_modules = docs_dir / "node_modules"
+    node_modules.mkdir()
+    (node_modules / "bad.md").write_text("# Should be skipped")
+    (docs_dir / "ok.md").write_text("# Included")
+
+    pages = parse_docs_directory(docs_dir)
+    assert len(pages) == 1
+    assert pages[0].path == "ok.md"
