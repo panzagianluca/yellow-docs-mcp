@@ -87,3 +87,11 @@ def test_search_result_has_content():
     assert len(results) > 0
     assert results[0].text
     assert results[0].section_title
+
+
+def test_search_bm25_only_mode():
+    engine = SearchEngine(enable_vectors=False)
+    engine.build_index(_make_pages())
+    results = engine.search("create_channel")
+    assert len(results) > 0
+    assert results[0].path == "protocol/off-chain/channel-methods.mdx"

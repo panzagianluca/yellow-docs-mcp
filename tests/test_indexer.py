@@ -9,7 +9,7 @@ def test_repo_manager_defaults():
     rm = RepoManager()
     assert rm.repo_url == "https://github.com/layer-3/docs.git"
     assert rm.repo_dir == INDEX_DIR / "repo"
-    assert rm.branch == "master"
+    assert rm.branch is None
 
 
 def test_docs_dir_path():

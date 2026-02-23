@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 INDEX_DIR = Path.home() / ".yellow-docs-mcp"
 REPO_URL = "https://github.com/layer-3/docs.git"
-BRANCH = "master"
+BRANCH: str | None = None
 
 
 class RepoManager:
@@ -21,7 +21,7 @@ class RepoManager:
         self,
         base_dir: Path | None = None,
         repo_url: str = REPO_URL,
-        branch: str = BRANCH,
+        branch: str | None = BRANCH,
     ):
         self.base_dir = base_dir or INDEX_DIR
         self.repo_url = repo_url
@@ -36,14 +36,23 @@ class RepoManager:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         if not self.repo_dir.exists():
             logger.info("Cloning %s...", self.repo_url)
-            git.Repo.clone_from(self.repo_url, str(self.repo_dir), branch=self.branch, depth=1)
+            clone_kwargs = {"depth": 1}
+            if self.branch:
+                clone_kwargs["branch"] = self.branch
+            git.Repo.clone_from(self.repo_url, str(self.repo_dir), **clone_kwargs)
             return True
         else:
             logger.info("Pulling latest changes...")
             repo = git.Repo(str(self.repo_dir))
             origin = repo.remotes.origin
+            if self.branch and not repo.head.is_detached:
+                if repo.active_branch.name != self.branch:
+                    repo.git.checkout(self.branch)
             old_hash = self._compute_content_hash(self.docs_dir)
-            origin.pull()
+            if repo.head.is_detached:
+                origin.pull()
+            else:
+                origin.pull(repo.active_branch.name)
             new_hash = self._compute_content_hash(self.docs_dir)
             changed = old_hash != new_hash
             if changed:
@@ -54,6 +63,8 @@ class RepoManager:
 
     def needs_reindex(self) -> bool:
         """Check if docs have changed since last index build."""
+        if not self.docs_dir.exists():
+            return True
         if not self.hash_file.exists():
             return True
         stored_hash = self.hash_file.read_text().strip()

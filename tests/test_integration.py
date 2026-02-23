@@ -135,7 +135,7 @@ def test_index_persistence(sample_docs, tmp_path):
 
     engine1 = SearchEngine()
     engine1.build_index(pages)
-    index_path = tmp_path / "test_index.pkl"
+    index_path = tmp_path / "test_index.json"
     save_index(engine1.get_index_data(), index_path)
 
     engine2 = SearchEngine()

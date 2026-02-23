@@ -65,3 +65,10 @@ def test_format_code_examples():
     pages = [_sample_page()]
     text = _format_code_examples(pages, "speed")
     assert "const x = 1" in text
+
+
+def test_format_code_examples_limit():
+    pages = [_sample_page(), _sample_page()]
+    text = _format_code_examples(pages, "speed", max_examples=1)
+    assert text.count("```typescript") == 1
+    assert "more examples" in text

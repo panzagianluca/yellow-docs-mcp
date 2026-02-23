@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
@@ -26,14 +25,25 @@ def _ensure_initialized() -> None:
 
     repo = RepoManager()
     cached = load_index()
-    if cached and not repo.needs_reindex():
+
+    content_changed = True
+    try:
+        logger.info("Syncing docs repo...")
+        content_changed = repo.sync_repo()
+    except Exception as exc:
+        if cached:
+            logger.warning("Repo sync failed; using cached index: %s", exc)
+            _engine.load_index_data(cached)
+            _initialized = True
+            return
+        raise
+
+    if cached and not content_changed and not repo.needs_reindex():
         logger.info("Loading cached index...")
         _engine.load_index_data(cached)
         _initialized = True
         return
 
-    logger.info("Syncing docs repo...")
-    repo.sync_repo()
     logger.info("Parsing documents...")
     pages = repo.parse_all_docs()
     logger.info("Building search index...")
@@ -133,9 +143,15 @@ def _format_api_methods(pages: list[DocPage], method: str | None = None) -> str:
         return "\n".join(parts)
 
 
-def _format_code_examples(pages: list[DocPage], topic: str, language: str = "typescript") -> str:
+def _format_code_examples(
+    pages: list[DocPage],
+    topic: str,
+    language: str = "typescript",
+    max_examples: int = 5,
+) -> str:
     topic_lower = topic.lower()
     lang_lower = language.lower()
+    max_examples = max(1, min(max_examples, 25))
     results = []
     for page in pages:
         for section in page.sections:
@@ -152,10 +168,15 @@ def _format_code_examples(pages: list[DocPage], topic: str, language: str = "typ
     if not results:
         return f"No code examples found for topic: {topic}"
     parts = [f"# Code Examples: {topic}\n"]
-    for page, section, cb in results:
+    for page, section, cb in results[:max_examples]:
         parts.append(f"## From: {page.title} > {section.title}")
         parts.append(f"**Path:** `{page.path}`\n")
         parts.append(f"```{cb.language}\n{cb.code}\n```\n")
+    if len(results) > max_examples:
+        parts.append(
+            f"...and {len(results) - max_examples} more examples. "
+            "Narrow the topic or language to reduce output."
+        )
     return "\n".join(parts)
 
 
@@ -169,6 +190,7 @@ async def search_docs(query: str, limit: int = 5, category: str | None = None) -
         category: Optional filter by doc category: "learn", "protocol", "api-reference", "guides", "manuals", "build", "tutorials"
     """
     _ensure_initialized()
+    limit = max(1, min(limit, 20))
     results = _engine.search(query, limit=limit, category=category)
     return _format_search_results(results)
 
@@ -214,15 +236,16 @@ async def get_api_reference(method: str | None = None) -> str:
 
 
 @mcp.tool()
-async def get_code_examples(topic: str, language: str = "typescript") -> str:
+async def get_code_examples(topic: str, language: str = "typescript", limit: int = 5) -> str:
     """Find code examples from the docs matching a topic.
 
     Args:
         topic: Topic to find examples for (e.g. "connect to clearnode", "create channel", "authentication")
         language: Programming language filter (default "typescript"). Use "all" for any language.
+        limit: Max number of examples to return (default 5, max 25)
     """
     _ensure_initialized()
-    return _format_code_examples(_engine.get_all_pages(), topic, language)
+    return _format_code_examples(_engine.get_all_pages(), topic, language, max_examples=limit)
 
 
 def main():
